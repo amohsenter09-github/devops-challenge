@@ -6,18 +6,16 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # Image name in GitHub Container Registry: ghcr.io/<owner>/<repo>
+  IMAGE: ghcr.io/${{ github.repository }}
+
 jobs:
-  ci:
+  test:
+    name: Test
     runs-on: ubuntu-latest
-    # contents: read = clone the repo; packages: write = push the image to GHCR.
-    permissions:
-      contents: read
-      packages: write
-    env:
-      # Image name in GitHub Container Registry: ghcr.io/<owner>/<repo>
-      IMAGE: ghcr.io/${{ github.repository }}
     steps:
-      # Fetch the repository (pom.xml, Dockerfile, source).
+      # Fetch the repository (pom.xml and tests).
       - uses: actions/checkout@v7
 
       # Install JDK 21 and cache Maven dependencies.
@@ -31,17 +29,52 @@ jobs:
       - name: Test
         run: mvn -B test
 
-      # Build the Docker image. No tag means Docker uses :latest.
-      - name: Build image
-        run: docker build -t "$IMAGE" .
+  build:
+    name: Build
+    # Wait until tests pass.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      # Jobs do not share a disk; check the code out again for docker build.
+      - uses: actions/checkout@v7
 
-      # Start the container and confirm it runs (prints Hello World).
-      - name: Run image
-        run: docker run --rm "$IMAGE"
+      # Build the image, then run it to confirm it prints Hello World.
+      # No tag means Docker uses :latest.
+      - name: Build
+        run: |
+          docker build -t "$IMAGE" .
+          docker run --rm "$IMAGE"
 
-      # Log in to GHCR and push. Only on main, not on pull requests.
-      - name: Push image
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      # Save the image so the Push job can publish the same build (no rebuild).
+      - name: Save image
+        run: docker save "$IMAGE" | gzip > image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: image.tar.gz
+
+  push:
+    name: Push
+    # Wait until the image has been built and saved.
+    needs: build
+    # Publish only from main, not from pull requests.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Load the image produced by the Build job.
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+
+      - name: Load image
+        run: gunzip -c image.tar.gz | docker load
+
+      # Log in to GHCR and push ghcr.io/<owner>/<repo>:latest.
+      - name: Push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker push "$IMAGE"
