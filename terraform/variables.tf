@@ -1,17 +1,14 @@
 variable "image_name" {
-  description = "GHCR image without tag. Default matches the image CI pushes."
+  description = "GHCR image without tag. Set in application.tfvars."
   type        = string
-  default     = "ghcr.io/amohsenter09-github/devops-challenge"
 }
 
 variable "image_tag" {
-  description = "Image tag to pull. Use latest or a CI sequence number such as 5."
+  description = "Image tag. Set in application.tfvars."
   type        = string
-  default     = "latest"
 }
 
 variable "container_name" {
-  description = "Name of the local container Terraform creates."
+  description = "Local container name. Set in application.tfvars."
   type        = string
-  default     = "devops-challenge"
 }
