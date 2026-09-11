@@ -55,24 +55,29 @@ If the package is private, log in first (`docker login ghcr.io`). Do not commit 
 
 ## 3. Terraform (run the GHCR image locally)
 
-Reusable module: `terraform/modules/container-app`. App values are hardcoded in `terraform/application.tfvars` (`image_name`, `image_tag`, `container_name`).
+Reusable module: `terraform/modules/container-app`. Each registry app is one tfvars file with `image_name`, `image_tag`, and `container_name`. The module does not loop; you pass a different file per app.
 
 From `terraform/`:
 
 ```bash
 terraform init
+
+# App 1
 terraform apply -var-file=application.tfvars
+
+# App 2 (own state so it does not replace app 1)
+terraform apply -var-file=application-2.tfvars -state=application-2.tfstate
 ```
 
-This pulls `ghcr.io/amohsenter09-github/devops-challenge:latest` and runs container `devops-challenge`. Success: `exit_code = 0` and `Hello World` in the logs.
+Copy `application.tfvars` for every image in GHCR. Change the three values. `container_name` must be unique.
 
-A second apply does **nothing** if that container already exists. To run it again:
+Success: `exit_code = 0` and `Hello World` in the logs.
+
+To run app 1 again:
 
 ```bash
 terraform apply -var-file=application.tfvars -replace=module.app.docker_container.this
 ```
-
-Another developer or another app: copy `application.tfvars`, change `container_name` (must be unique), and apply with that file.
 
 State files (`*.tfstate`) stay local and are gitignored.
 
@@ -86,7 +91,7 @@ State files (`*.tfstate`) stay local and are gitignored.
 | Tests in CI, skipped in Docker | Faster image build; tests still run before publish. |
 | Publish to GHCR | Same GitHub account, no extra registry account. |
 | Terraform pulls GHCR, does not rebuild | Local run uses the same image CI published. |
-| Small `container-app` module | Image pull + run is defined once; each app sets values in `application.tfvars`. |
+| Small `container-app` module | Image pull + run is defined once. Each registry app is a tfvars file you pass to apply. |
 | `must_run = false` | The app is not a server. It prints Hello World and exits. |
 
 Out of scope on purpose: Kubernetes, cloud VMs, secrets managers. The brief asked for a small, practical setup.
