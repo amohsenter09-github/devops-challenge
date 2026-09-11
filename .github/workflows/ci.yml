@@ -1,14 +1,17 @@
 name: CI
 
+# Run on commits to main, on pull requests, and when started manually.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
+# Least privilege by default; the build job grants packages:write only when pushing.
 permissions:
   contents: read
 
+# Cancel an older run on the same branch when a newer commit starts CI.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -18,9 +21,11 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
+      # Fetch the repository so Maven can see pom.xml and tests.
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # Install JDK 21 (Temurin) and cache ~/.m2 so later runs skip dependency downloads.
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
@@ -28,34 +33,43 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # Run unit tests here, not in the Docker build (Dockerfile uses -DskipTests).
       - name: Run tests
         run: mvn -B test
 
   build:
     name: Build image
+    # Do not build or publish an image if tests failed.
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     env:
+      # GHCR image path: ghcr.io/<owner>/<repo>
       IMAGE: ghcr.io/${{ github.repository }}
     steps:
+      # Jobs do not share a workspace; check the code out again for docker build.
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # GHCR requires a lowercase image name; github.repository can contain capitals.
       - name: Normalize image name
         run: echo "IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
+      # Tag with a short commit SHA (immutable) and latest (moving pointer on main).
+      # ${GITHUB_SHA::7} is bash: first 7 chars of the GITHUB_SHA env var.
       - name: Build image
         run: docker build -t "$IMAGE:sha-${GITHUB_SHA::7}" -t "$IMAGE:latest" .
 
+      # Smoke-test the built image: it must print Hello World and exit successfully.
       - name: Run image
         run: |
           output="$(docker run --rm "$IMAGE:sha-${GITHUB_SHA::7}")"
           printf '%s\n' "$output"
           printf '%s\n' "$output" | grep -q "Hello World"
 
+      # Authenticate to GHCR with the job token. Skip on pull requests.
       - name: Log in to GHCR
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v4
@@ -64,6 +78,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Publish both tags only from main so PRs cannot overwrite latest.
       - name: Push image
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
