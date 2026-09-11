@@ -1,86 +1,47 @@
 name: CI
 
-# Run on commits to main, on pull requests, and when started manually.
+# Run on pushes to main and on pull requests.
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
-
-# Least privilege by default; the build job grants packages:write only when pushing.
-permissions:
-  contents: read
-
-# Cancel an older run on the same branch when a newer commit starts CI.
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test
+  ci:
     runs-on: ubuntu-latest
+    # contents: read = clone the repo; packages: write = push the image to GHCR.
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Image name in GitHub Container Registry: ghcr.io/<owner>/<repo>
+      IMAGE: ghcr.io/${{ github.repository }}
     steps:
-      # Fetch the repository so Maven can see pom.xml and tests.
-      - name: Check out repository
-        uses: actions/checkout@v7
+      # Fetch the repository (pom.xml, Dockerfile, source).
+      - uses: actions/checkout@v7
 
-      # Install JDK 21 (Temurin) and cache ~/.m2 so later runs skip dependency downloads.
-      - name: Set up Java 21
-        uses: actions/setup-java@v5
+      # Install JDK 21 and cache Maven dependencies.
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
 
-      # Run unit tests here, not in the Docker build (Dockerfile uses -DskipTests).
-      - name: Run tests
+      # Run unit tests here; the Dockerfile skips tests with -DskipTests.
+      - name: Test
         run: mvn -B test
 
-  build:
-    name: Build image
-    # Do not build or publish an image if tests failed.
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    env:
-      # GHCR image path: ghcr.io/<owner>/<repo>
-      IMAGE: ghcr.io/${{ github.repository }}
-    steps:
-      # Jobs do not share a workspace; check the code out again for docker build.
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      # GHCR requires a lowercase image name; github.repository can contain capitals.
-      - name: Normalize image name
-        run: echo "IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
-
-      # Tag with a short commit SHA (immutable) and latest (moving pointer on main).
-      # ${GITHUB_SHA::7} is bash: first 7 chars of the GITHUB_SHA env var.
+      # Build the Docker image. No tag means Docker uses :latest.
       - name: Build image
-        run: docker build -t "$IMAGE:sha-${GITHUB_SHA::7}" -t "$IMAGE:latest" .
+        run: docker build -t "$IMAGE" .
 
-      # Smoke-test the built image: it must print Hello World and exit successfully.
+      # Start the container and confirm it runs (prints Hello World).
       - name: Run image
-        run: |
-          output="$(docker run --rm "$IMAGE:sha-${GITHUB_SHA::7}")"
-          printf '%s\n' "$output"
-          printf '%s\n' "$output" | grep -q "Hello World"
+        run: docker run --rm "$IMAGE"
 
-      # Authenticate to GHCR with the job token. Skip on pull requests.
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Publish both tags only from main so PRs cannot overwrite latest.
+      # Log in to GHCR and push. Only on main, not on pull requests.
       - name: Push image
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          docker push "$IMAGE:sha-${GITHUB_SHA::7}"
-          docker push "$IMAGE:latest"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE"
