@@ -1,0 +1,9 @@
+target/
+.idea/
+*.iml
+.DS_Store
+.terraform/
+*.tfstate
+*.tfstate.*
+.env
+.env.*
