@@ -55,6 +55,8 @@ If the package is private, log in first (`docker login ghcr.io`). Do not commit 
 
 ## 3. Terraform (run the GHCR image locally)
 
+Reusable module: `terraform/modules/container-app`. The root module calls it once per entry in `var.apps` (map key = container name).
+
 From `terraform/`:
 
 ```bash
@@ -62,19 +64,30 @@ terraform init
 terraform apply
 ```
 
-This pulls `ghcr.io/amohsenter09-github/devops-challenge:latest` and runs it as a local container. Success looks like `exit_code = 0` and `Hello World` in the logs.
+Default: one container named `devops-challenge` from `ghcr.io/amohsenter09-github/devops-challenge:latest`. Success: `exit_code = 0` and `Hello World` in the logs.
 
-A second `terraform apply` does **nothing** if the container already exists. To run Hello World again:
-
-```bash
-terraform apply -replace=docker_container.app
-```
-
-Optional: pin a CI sequence tag:
+A second `terraform apply` does **nothing** if that container already exists. To run it again:
 
 ```bash
-terraform apply -var='image_tag=5'
+terraform apply -replace='module.app["devops-challenge"].docker_container.this'
 ```
+
+Several developers / several apps: add more map entries. Each name must be unique on the machine.
+
+```hcl
+apps = {
+  devops-challenge = {
+    image_name = "ghcr.io/amohsenter09-github/devops-challenge"
+    image_tag  = "latest"
+  }
+  devops-challenge-dev2 = {
+    image_name = "ghcr.io/amohsenter09-github/devops-challenge"
+    image_tag  = "latest"
+  }
+}
+```
+
+Each developer keeps their own local state (gitignored). The module is shared; state is not.
 
 State files (`*.tfstate`) stay local and are gitignored.
 
@@ -88,6 +101,7 @@ State files (`*.tfstate`) stay local and are gitignored.
 | Tests in CI, skipped in Docker | Faster image build; tests still run before publish. |
 | Publish to GHCR | Same GitHub account, no extra registry account. |
 | Terraform pulls GHCR, does not rebuild | Local run uses the same image CI published. |
+| Small `container-app` module + `for_each` | Same definition can run many named containers without copy-paste. |
 | `must_run = false` | The app is not a server. It prints Hello World and exits. |
 
 Out of scope on purpose: Kubernetes, cloud VMs, secrets managers. The brief asked for a small, practical setup.
