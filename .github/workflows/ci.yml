@@ -9,6 +9,8 @@ on:
 env:
   # Image name in GitHub Container Registry: ghcr.io/<owner>/<repo>
   IMAGE: ghcr.io/${{ github.repository }}
+  # github.run_number increases by 1 on every CI run (1, 2, 3, ...).
+  TAG: ${{ github.run_number }}
 
 jobs:
   test:
@@ -38,16 +40,15 @@ jobs:
       # Jobs do not share a disk; check the code out again for docker build.
       - uses: actions/checkout@v7
 
-      # Build the image, then run it to confirm it prints Hello World.
-      # No tag means Docker uses :latest.
+      # Build once, tag as :latest and as the sequence number (:1, :2, :3, ...).
       - name: Build
         run: |
-          docker build -t "$IMAGE" .
-          docker run --rm "$IMAGE"
+          docker build -t "$IMAGE:latest" -t "$IMAGE:$TAG" .
+          docker run --rm "$IMAGE:latest"
 
-      # Save the image so the Push job can publish the same build (no rebuild).
+      # Save both tags so the Push job can publish the same build (no rebuild).
       - name: Save image
-        run: docker save "$IMAGE" | gzip > image.tar.gz
+        run: docker save "$IMAGE:latest" "$IMAGE:$TAG" | gzip > image.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
@@ -73,8 +74,9 @@ jobs:
       - name: Load image
         run: gunzip -c image.tar.gz | docker load
 
-      # Log in to GHCR and push ghcr.io/<owner>/<repo>:latest.
+      # Log in to GHCR and push both :latest and the sequence tag.
       - name: Push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$IMAGE"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$TAG"
