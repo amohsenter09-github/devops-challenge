@@ -1,11 +1,19 @@
-output "apps" {
-  description = "Per-container image, exit code, and logs."
-  value = {
-    for name, instance in module.app : name => {
-      image_name     = instance.image_name
-      container_name = instance.container_name
-      exit_code      = instance.exit_code
-      logs           = instance.logs
-    }
-  }
+output "image_name" {
+  description = "GHCR image that was pulled."
+  value       = module.app.image_name
+}
+
+output "container_name" {
+  description = "Local container name."
+  value       = module.app.container_name
+}
+
+output "exit_code" {
+  description = "Container exit code. 0 means Hello World ran successfully."
+  value       = module.app.exit_code
+}
+
+output "logs" {
+  description = "Container logs."
+  value       = module.app.logs
 }

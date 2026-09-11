@@ -1,9 +1,8 @@
-# One module call per app. Add a row in var.apps to run another container.
+# One app. Image name, tag, and container name come from application.tfvars.
 module "app" {
-  source   = "./modules/container-app"
-  for_each = var.apps
+  source = "./modules/container-app"
 
-  image_name     = each.value.image_name
-  image_tag      = each.value.image_tag
-  container_name = each.key
+  image_name     = var.image_name
+  image_tag      = var.image_tag
+  container_name = var.container_name
 }
