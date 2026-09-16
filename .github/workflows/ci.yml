@@ -1,54 +1,57 @@
 name: CI
 
-# Run on pushes to main and on pull requests.
+# This branch only. main keeps publishing :latest and is left unchanged.
 on:
   push:
-    branches: [main]
+    branches: [scenario-v1]
   pull_request:
 
 env:
-  # Image name in GitHub Container Registry: ghcr.io/<owner>/<repo>
   IMAGE: ghcr.io/${{ github.repository }}
-  # github.run_number increases by 1 on every CI run (1, 2, 3, ...).
-  TAG: ${{ github.run_number }}
+  # Do not use :latest on this branch (that tag is the main CLI image).
+  TAG: scenario-v1
 
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      # Fetch the repository (pom.xml and tests).
       - uses: actions/checkout@v7
 
-      # Install JDK 21 and cache Maven dependencies.
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
 
-      # Run unit tests here; the Dockerfile skips tests with -DskipTests.
       - name: Test
         run: mvn -B test
 
   build:
     name: Build
-    # Wait until tests pass.
     needs: test
     runs-on: ubuntu-latest
     steps:
-      # Jobs do not share a disk; check the code out again for docker build.
       - uses: actions/checkout@v7
 
-      # Build once, tag as :latest and as the sequence number (:1, :2, :3, ...).
+      # Web app stays up; smoke-test GET / then remove the container.
       - name: Build
         run: |
-          docker build -t "$IMAGE:latest" -t "$IMAGE:$TAG" .
-          docker run --rm "$IMAGE:latest"
+          docker build -t "$IMAGE:$TAG" .
+          docker run -d --name ci-app -p 8080:8080 "$IMAGE:$TAG"
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/ | grep -q "Hello World"; then
+              docker rm -f ci-app
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs ci-app
+          docker rm -f ci-app
+          exit 1
 
-      # Save both tags so the Push job can publish the same build (no rebuild).
       - name: Save image
-        run: docker save "$IMAGE:latest" "$IMAGE:$TAG" | gzip > image.tar.gz
+        run: docker save "$IMAGE:$TAG" | gzip > image.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
@@ -57,16 +60,13 @@ jobs:
 
   push:
     name: Push
-    # Wait until the image has been built and saved.
     needs: build
-    # Publish only from main, not from pull requests.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/scenario-v1' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      # Load the image produced by the Build job.
       - uses: actions/download-artifact@v4
         with:
           name: image
@@ -74,9 +74,7 @@ jobs:
       - name: Load image
         run: gunzip -c image.tar.gz | docker load
 
-      # Log in to GHCR and push both :latest and the sequence tag.
       - name: Push
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$IMAGE:latest"
           docker push "$IMAGE:$TAG"
