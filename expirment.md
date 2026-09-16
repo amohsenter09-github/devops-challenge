@@ -79,10 +79,13 @@ Do not use `:latest` on this branch. That tag is the CLI app from `main`.
 
 ## 4. Run with Terraform (pull `:scenario-v1`)
 
+Reusable module: `terraform/modules/container-app`.
+Values for this branch are in `scenario-v1.tfvars` (`image_tag = "scenario-v1"`).
+
 ```bash
 cd /Users/amrfathy/Downloads/devops-challenge/terraform
 terraform init
-terraform apply
+terraform apply -var-file=scenario-v1.tfvars
 ```
 
 Open http://127.0.0.1:8080/
@@ -92,11 +95,11 @@ Terraform pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`. It d
 Recreate the container:
 
 ```bash
-terraform apply -replace=docker_container.app
+terraform apply -var-file=scenario-v1.tfvars -replace=module.app.docker_container.this
 ```
 
 Stop and remove:
 
 ```bash
-terraform destroy
+terraform destroy -var-file=scenario-v1.tfvars
 ```

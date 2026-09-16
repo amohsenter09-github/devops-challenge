@@ -64,27 +64,24 @@ If the package is private, log in first (`docker login ghcr.io`). Do not commit 
 
 ## 3. Terraform (run the GHCR image locally)
 
+Reusable module: `terraform/modules/container-app`.
+App values are in `terraform/scenario-v1.tfvars` (`image_tag = "scenario-v1"`).
+
 From `terraform/`:
 
 ```bash
 terraform init
-terraform apply
+terraform apply -var-file=scenario-v1.tfvars
 ```
 
 This pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`, keeps the container running, and maps host port 8080. Open http://127.0.0.1:8080/
 
 Apply only after CI has pushed `:scenario-v1`.
 
-A second `terraform apply` does **nothing** if that container already exists. To recreate it:
+A second apply does **nothing** if that container already exists. To recreate it:
 
 ```bash
-terraform apply -replace=docker_container.app
-```
-
-Optional: pin another tag:
-
-```bash
-terraform apply -var='image_tag=scenario-v1'
+terraform apply -var-file=scenario-v1.tfvars -replace=module.app.docker_container.this
 ```
 
 State files (`*.tfstate`) stay local and are gitignored.
@@ -99,6 +96,7 @@ State files (`*.tfstate`) stay local and are gitignored.
 | Tests in CI, skipped in Docker | Faster image build; tests still run before publish. |
 | Publish to GHCR | Same GitHub account, no extra registry account. |
 | Terraform pulls GHCR, does not rebuild | Local run uses the same image CI published. |
+| Small `container-app` module + `scenario-v1.tfvars` | Pull/run is defined once; this branch sets the tag in one file. |
 | Web app on port 8080 | `GET /` returns Hello World so the app can be reached locally (not a public internet deploy). |
 
 Out of scope on purpose: Kubernetes, cloud VMs, secrets managers. The brief asked for a small, practical setup.

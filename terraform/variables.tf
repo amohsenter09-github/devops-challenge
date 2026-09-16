@@ -1,23 +1,19 @@
 variable "image_name" {
-  description = "GHCR image without tag."
+  description = "GHCR image without tag. Set in scenario-v1.tfvars."
   type        = string
-  default     = "ghcr.io/amohsenter09-github/devops-challenge"
 }
 
 variable "image_tag" {
-  description = "Image tag CI publishes on this branch."
+  description = "Image tag. Set in scenario-v1.tfvars."
   type        = string
-  default     = "scenario-v1"
 }
 
 variable "container_name" {
-  description = "Name of the local container Terraform creates."
+  description = "Local container name. Set in scenario-v1.tfvars."
   type        = string
-  default     = "devops-challenge"
 }
 
 variable "host_port" {
-  description = "Host port mapped to the app (container port 8080)."
+  description = "Host port mapped to container port 8080. Set in scenario-v1.tfvars."
   type        = number
-  default     = 8080
 }
