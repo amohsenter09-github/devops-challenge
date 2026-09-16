@@ -22,7 +22,7 @@ Without Docker:
 mvn -B spring-boot:run
 ```
 
-Then open http://127.0.0.1:8080/
+Then open http://localhost:8080/
 
 With Docker (from the repo root, not `terraform/`):
 
@@ -31,7 +31,7 @@ docker build -t devops-challenge .
 docker run --rm -p 8080:8080 devops-challenge
 ```
 
-Then open http://127.0.0.1:8080/
+Then open http://localhost:8080/
 
 The Dockerfile uses a two-stage build:
 
@@ -74,7 +74,7 @@ terraform init
 terraform apply -var-file=scenario-v1.tfvars
 ```
 
-This pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`, keeps the container running, and maps host port 8080. Open http://127.0.0.1:8080/
+This pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`, keeps the container running, and maps host port 8080. Open http://localhost:8080/
 
 Apply only after CI has pushed `:scenario-v1`.
 
@@ -105,4 +105,4 @@ Out of scope on purpose: Kubernetes, cloud VMs, secrets managers. The brief aske
 
 - `mvn` tests in GitHub Actions (green CI on `main`)
 - Image published to GHCR as `:scenario-v1` (not `:latest`)
-- `terraform apply` pulls `:scenario-v1`; http://127.0.0.1:8080/ returns `Hello World`
+- `terraform apply` pulls `:scenario-v1`; http://localhost:8080/ returns `Hello World`

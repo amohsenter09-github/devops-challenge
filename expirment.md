@@ -1,7 +1,7 @@
 # Local experiments (`scenario-v1`)
 
 The app is a small web service. `GET /` returns `Hello World` on port 8080.
-This is local only (`http://127.0.0.1:8080/`), not a public internet deploy.
+This is local only (`http://localhost:8080/`), not a public internet deploy.
 
 Always run Docker commands from the **repo root**, not from `terraform/`.
 
@@ -24,7 +24,7 @@ mvn -B test
 mvn -B spring-boot:run
 ```
 
-Open http://127.0.0.1:8080/
+Open http://localhost:8080/
 
 Stop with Ctrl+C.
 
@@ -54,7 +54,7 @@ docker build -t devops-challenge .
 docker run --rm -p 8080:8080 devops-challenge
 ```
 
-Open http://127.0.0.1:8080/
+Open http://localhost:8080/
 
 `-p 8080:8080` maps container port 8080 to your machine.
 
@@ -71,7 +71,7 @@ docker pull ghcr.io/amohsenter09-github/devops-challenge:scenario-v1
 docker run --rm -p 8080:8080 ghcr.io/amohsenter09-github/devops-challenge:scenario-v1
 ```
 
-Open http://127.0.0.1:8080/
+Open http://localhost:8080/
 
 Do not use `:latest` on this branch. That tag is the CLI app from `main`.
 
@@ -88,7 +88,7 @@ terraform init
 terraform apply -var-file=scenario-v1.tfvars
 ```
 
-Open http://127.0.0.1:8080/
+Open http://localhost:8080/
 
 Terraform pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`. It does not build locally.
 

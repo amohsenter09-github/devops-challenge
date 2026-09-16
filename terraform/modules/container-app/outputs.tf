@@ -10,5 +10,5 @@ output "container_name" {
 
 output "url" {
   description = "Local URL for the web app."
-  value       = "http://127.0.0.1:${var.host_port}/"
+  value       = "http://localhost:${var.host_port}/"
 }
