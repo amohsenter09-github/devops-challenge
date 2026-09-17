@@ -10,7 +10,7 @@ data "docker_registry_image" "this" {
 # Pull from GHCR. This module does not build the image.
 resource "docker_image" "this" {
   name          = data.docker_registry_image.this.name
-  keep_locally  = true
+  keep_locally  = false 
   pull_triggers = [data.docker_registry_image.this.sha256_digest]
 }
 
