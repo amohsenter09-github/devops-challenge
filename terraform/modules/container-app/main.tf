@@ -1,5 +1,6 @@
 locals {
-  image = "${var.image_name}:${var.image_tag}"
+  # Pin by digest when set; otherwise pull by floating tag (dev / prod).
+  image = var.image_digest != "" ? "${var.image_name}@${var.image_digest}" : "${var.image_name}:${var.image_tag}"
 }
 
 # Ask GHCR for the current digest so a new push of this tag is pulled on apply.
@@ -10,7 +11,7 @@ data "docker_registry_image" "this" {
 # Pull from GHCR. This module does not build the image.
 resource "docker_image" "this" {
   name          = data.docker_registry_image.this.name
-  keep_locally  = false 
+  keep_locally  = false
   pull_triggers = [data.docker_registry_image.this.sha256_digest]
 }
 

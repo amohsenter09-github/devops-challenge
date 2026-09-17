@@ -1,15 +1,15 @@
 name: CI
 
-# This branch only. main keeps publishing :latest and is left unchanged.
+# Dev publishes :dev. Main (when merged later) publishes :prod and :latest.
+# PRs only test/build; they never push registry tags.
 on:
   push:
-    branches: [scenario-v1]
+    branches: [dev, main]
   pull_request:
+    branches: [dev, main]
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
-  # Do not use :latest on this branch (that tag is the main CLI image).
-  TAG: scenario-v1
 
 jobs:
   test:
@@ -34,11 +34,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set image tags
+        id: tags
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "tags=ci-pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            echo "tags=dev" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "tags=prod latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=ci" >> "$GITHUB_OUTPUT"
+          fi
+
       # Web app stays up; smoke-test GET / then remove the container.
       - name: Build
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
         run: |
-          docker build -t "$IMAGE:$TAG" .
-          docker run -d --name ci-app -p 8080:8080 "$IMAGE:$TAG"
+          primary="$(echo "$TAGS" | awk '{print $1}')"
+          tag_args=""
+          for t in $TAGS; do
+            tag_args="$tag_args -t $IMAGE:$t"
+          done
+          # shellcheck disable=SC2086
+          docker build $tag_args .
+          docker run -d --name ci-app -p 8080:8080 "$IMAGE:$primary"
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8080/ | grep -q "Hello World"; then
               docker rm -f ci-app
@@ -51,7 +72,15 @@ jobs:
           exit 1
 
       - name: Save image
-        run: docker save "$IMAGE:$TAG" | gzip > image.tar.gz
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          images=""
+          for t in $TAGS; do
+            images="$images $IMAGE:$t"
+          done
+          # shellcheck disable=SC2086
+          docker save $images | gzip > image.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
@@ -61,7 +90,7 @@ jobs:
   push:
     name: Push
     needs: build
-    if: github.ref == 'refs/heads/scenario-v1' && github.event_name == 'push'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -74,7 +103,29 @@ jobs:
       - name: Load image
         run: gunzip -c image.tar.gz | docker load
 
+      - name: Set image tags
+        id: tags
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            echo "tags=dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=prod latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Push
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker push "$IMAGE:$TAG"
+          for t in $TAGS; do
+            docker push "$IMAGE:$t"
+          done
+
+      - name: Print digests
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          for t in $TAGS; do
+            echo "=== $IMAGE:$t ==="
+            docker buildx imagetools inspect "$IMAGE:$t" || docker image inspect "$IMAGE:$t" --format '{{json .RepoDigests}}'
+          done

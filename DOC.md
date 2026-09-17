@@ -44,20 +44,22 @@ Tests are **not** run inside the image (`mvn -DskipTests package`). Tests run in
 
 Pipeline file: `.github/workflows/ci.yml`
 
-On pushes to `scenario-v1`:
+| Event | What CI does | GHCR tags |
+|---|---|---|
+| Push to `dev` | Test → Build → Push | `:dev` |
+| PR into `dev` or `main` | Test → Build only | none |
+| Push to `main` (after merge) | Test → Build → Push | `:prod` and `:latest` |
 
-1. **Test** — `mvn -B test`
-2. **Build** — build the image, curl `GET /`
-3. **Push** — publish `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`
+CI also prints image digests after a push so you can pin Terraform with `image_digest`.
 
-Does **not** push `:latest` (that tag stays the `main` CLI image).
+**Note:** Nothing is merged to `main` yet. Until then, only `:dev` is published from this branch.
 
 See runs under the repo **Actions** tab. See the image under **Packages**.
 
-Pull:
+Pull the dev image:
 
 ```bash
-docker pull ghcr.io/amohsenter09-github/devops-challenge:scenario-v1
+docker pull ghcr.io/amohsenter09-github/devops-challenge:dev
 ```
 
 If the package is private, log in first (`docker login ghcr.io`). Do not commit tokens.
@@ -65,24 +67,38 @@ If the package is private, log in first (`docker login ghcr.io`). Do not commit 
 ## 3. Terraform (run the GHCR image locally)
 
 Reusable module: `terraform/modules/container-app`.
-App values are in `terraform/scenario-v1.tfvars` (`image_tag = "scenario-v1"`).
+
+| Env file | Tag | Host port |
+|---|---|---|
+| `terraform/dev.tfvars` | `:dev` | 8080 |
+| `terraform/prod.tfvars` | `:prod` | 8081 |
+
+Optional pin: set `image_digest = "sha256:..."` in the tfvars file (from CI output). Empty string means pull by tag.
 
 From `terraform/`:
 
 ```bash
 terraform init
-terraform apply -var-file=scenario-v1.tfvars
+terraform apply -var-file=dev.tfvars
 ```
 
-This pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`, keeps the container running, and maps host port 8080. Open http://localhost:8080/
+This pulls `ghcr.io/amohsenter09-github/devops-challenge:dev`, keeps the container running, and maps host port 8080. Open http://localhost:8080/
 
-Apply only after CI has pushed `:scenario-v1`.
+Apply only after CI has pushed `:dev`.
 
 A second apply does **nothing** if that container already exists. To recreate it:
 
 ```bash
-terraform apply -var-file=scenario-v1.tfvars -replace=module.app.docker_container.this
+terraform apply -var-file=dev.tfvars -replace=module.app.docker_container.this
 ```
+
+Prod (only after `:prod` exists on GHCR — i.e. after a future merge to `main`):
+
+```bash
+terraform apply -var-file=prod.tfvars
+```
+
+Use a **separate state** for prod if you run both envs at once (e.g. `-state=prod.tfstate`).
 
 State files (`*.tfstate`) stay local and are gitignored.
 
@@ -92,17 +108,18 @@ State files (`*.tfstate`) stay local and are gitignored.
 |---|---|
 | GitHub Actions, not GitLab | The repo is on GitHub. The brief allows another CI service. |
 | Three jobs: Test, Build, Push | Easy to see in the Actions UI. Push cannot run if tests fail. |
-| Push only from `scenario-v1` as `:scenario-v1` | Leaves `main` and GHCR `:latest` unchanged. |
+| `dev` → `:dev`; `main` → `:prod` + `:latest` | Branch name matches the floating tag; prod only after merge. |
+| PRs never push tags | Re-test only; registry stays clean until a branch push. |
 | Tests in CI, skipped in Docker | Faster image build; tests still run before publish. |
 | Publish to GHCR | Same GitHub account, no extra registry account. |
 | Terraform pulls GHCR, does not rebuild | Local run uses the same image CI published. |
-| Small `container-app` module + `scenario-v1.tfvars` | Pull/run is defined once; this branch sets the tag in one file. |
+| `container-app` module + `dev.tfvars` / `prod.tfvars` | Same pull/run module; env files set tag, port, optional digest. |
 | Web app on port 8080 | `GET /` returns Hello World so the app can be reached locally (not a public internet deploy). |
 
 Out of scope on purpose: Kubernetes, cloud VMs, secrets managers. The brief asked for a small, practical setup.
 
 ## How this was checked
 
-- `mvn` tests in GitHub Actions (green CI on `main`)
-- Image published to GHCR as `:scenario-v1` (not `:latest`)
-- `terraform apply` pulls `:scenario-v1`; http://localhost:8080/ returns `Hello World`
+- `mvn` tests in GitHub Actions
+- Image published to GHCR as `:dev` from the `dev` branch
+- `terraform apply -var-file=dev.tfvars` pulls `:dev`; http://localhost:8080/ returns `Hello World`

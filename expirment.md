@@ -1,4 +1,4 @@
-# Local experiments (`scenario-v1`)
+# Local experiments (`dev` branch)
 
 The app is a small web service. `GET /` returns `Hello World` on port 8080.
 This is local only (`http://localhost:8080/`), not a public internet deploy.
@@ -9,11 +9,13 @@ Always run Docker commands from the **repo root**, not from `terraform/`.
 cd /Users/amrfathy/Downloads/devops-challenge
 ```
 
-CI on this branch: Test → Build → Push `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`.
-It does **not** push `:latest` (`main` keeps that tag).
+| Branch | CI on push | GHCR tags |
+|---|---|---|
+| `dev` | Test → Build → Push | `:dev` |
+| `main` (not merged yet) | Test → Build → Push | `:prod` + `:latest` |
+| PR into `dev` / `main` | Test → Build only | none |
 
-Terraform apply only works **after** the first successful Push on `scenario-v1`.
-
+Terraform apply for dev only works **after** the first successful Push on `dev`.
 ---
 
 ## 1. Run without Docker (Maven)
@@ -64,46 +66,57 @@ Stop with Ctrl+C.
 
 ## 3. Run the image CI pushed (no Terraform)
 
-After CI Push on `scenario-v1`:
+After CI Push on `dev`:
 
 ```bash
-docker pull ghcr.io/amohsenter09-github/devops-challenge:scenario-v1
-docker run --rm -p 8080:8080 ghcr.io/amohsenter09-github/devops-challenge:scenario-v1
+docker pull ghcr.io/amohsenter09-github/devops-challenge:dev
+docker run --rm -p 8080:8080 ghcr.io/amohsenter09-github/devops-challenge:dev
 ```
 
 Open http://localhost:8080/
 
-Do not use `:latest` on this branch. That tag is the CLI app from `main`.
+`:prod` / `:latest` appear only after a future merge to `main` (not done yet).
 
 ---
 
-## 4. Run with Terraform (pull `:scenario-v1`)
+## 4. Run with Terraform (pull `:dev` or `:prod`)
 
 Reusable module: `terraform/modules/container-app`.
-Values for this branch are in `scenario-v1.tfvars` (`image_tag = "scenario-v1"`).
+
+| File | Tag | Port |
+|---|---|---|
+| `dev.tfvars` | `:dev` | 8080 |
+| `prod.tfvars` | `:prod` | 8081 |
+
+Optional: set `image_digest = "sha256:..."` in the tfvars to pin (from CI Print digests). Empty = pull by tag.
 
 ```bash
 cd /Users/amrfathy/Downloads/devops-challenge/terraform
 terraform init
-terraform apply -var-file=scenario-v1.tfvars
+terraform apply -var-file=dev.tfvars
 ```
 
 Open http://localhost:8080/
 
-Terraform pulls `ghcr.io/amohsenter09-github/devops-challenge:scenario-v1`. It does not build locally.
+Terraform pulls `ghcr.io/amohsenter09-github/devops-challenge:dev`. It does not build locally.
 
 Recreate the container:
 
 ```bash
-terraform apply -var-file=scenario-v1.tfvars -replace=module.app.docker_container.this
+terraform apply -var-file=dev.tfvars -replace=module.app.docker_container.this
 ```
 
 Stop and remove:
 
 ```bash
-terraform destroy -var-file=scenario-v1.tfvars
+terraform destroy -var-file=dev.tfvars
 ```
 
+Prod (only after `:prod` exists — after merge to `main`):
+
+```bash
+terraform apply -var-file=prod.tfvars -state=prod.tfstate
+```
 ---
 
 # Real-life: promote this solution to AWS (best-practice scenarios)
@@ -167,39 +180,45 @@ For this web app on multiple EC2s behind a load balancer:
 1. **Rolling with ALB health checks** (ASG instance refresh or CodeDeploy), or  
 2. **Blue/green** if you need instant rollback by switching the listener.
 
-Always run the container from an **ECR digest** (`@sha256:...`), not only `:latest` / `:scenario-v1`.
-
+Always run the container from an **ECR digest** (`@sha256:...`), not only `:latest` / `:dev` / `:prod`.
 ---
 
 ## 7. Branch strategy and how it maps to the pipeline
 
-### Suggested model (GitHub Flow + environment promotion)
+### Lab model (this repo)
+
+| Branch / ref | Pipeline does | GHCR |
+|---|---|---|
+| PR into `dev` / `main` | Test + Build (**no** push) | — |
+| Push to `dev` | Test + Build + Push | `:dev` |
+| Push to `main` (merge when ready) | Test + Build + Push | `:prod` + `:latest` |
+
+### Suggested AWS model (GitHub Flow + environment promotion)
 
 | Branch / ref | Pipeline does | AWS env | Registry |
 |---|---|---|---|
 | Feature branch / PR | Build + Test + Scan (optional ephemeral ECR tag; **no** prod deploy) | — | Optional |
-| `main` (or `develop`) | Full pipeline → push ECR → deploy | **dev** | `app:<sha>` + digest |
+| `dev` | Full pipeline → push ECR → deploy | **dev** | `app:<sha>` + digest |
 | Promote job / `release/*` / tag | Deploy **same digest** (no rebuild) | **staging** | Same digest |
-| Protected env + approval | Deploy **same digest** | **prod** | Same digest |
+| Protected `main` + approval | Deploy **same digest** | **prod** | Same digest |
 
 ### Correlation with pipeline jobs
 
 ```text
 PR ──────────────► test + build + scan
                       │
-push to main ───────► package (ECR) + deploy-dev
+push to dev ───────► package (ECR) + deploy-dev
                       │
 manual promote ─────► deploy-staging (input: digest)
                       │
-approval + promote ─► deploy-prod (input: same digest)
+merge main + approval ► deploy-prod (input: same digest)
 ```
 
 **Rules**
 
 - Prod deploy requires GitHub Environment protection (reviewers) + OIDC role only that environment can assume.
 - Branch name alone is not “prod safe”; **digest + approval** is.
-- Lab branch `scenario-v1` ≈ an experiment lane; production uses protected `main` + promotions, not a floating experiment tag.
-
+- Lab: `dev` → `:dev` today; `main` → `:prod` only when you choose to merge (not yet).
 ---
 
 ## 8. Deploy the application to multiple EC2 instances
@@ -301,7 +320,7 @@ Internet → ALB (HTTPS) → Target Group → EC2 A, EC2 B, EC2 C (ASG)
 | Lab (this repo) | AWS production |
 |---|---|
 | GitHub Actions → GHCR | GitHub Actions → **ECR** (OIDC) |
-| Tag `scenario-v1` | Immutable SHA tag + **digest pin** |
+| Tags `:dev` / `:prod` (+ optional digest) | Immutable SHA tag + **digest pin** |
 | Terraform local Docker | Terraform ASG / ALB / IAM / ECR + remote state |
 | `localhost:8080` | ALB HTTPS → many EC2s |
 | `docker login` on laptop | EC2 instance profile pulls ECR |
