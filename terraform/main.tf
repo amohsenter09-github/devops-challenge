@@ -7,4 +7,6 @@ module "app" {
   image_digest   = var.image_digest
   container_name = var.container_name
   host_port      = var.host_port
+  hello_color    = var.hello_color
+  hello_emoji    = var.hello_emoji
 }
