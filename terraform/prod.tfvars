@@ -4,3 +4,7 @@ image_tag      = "prod"
 image_digest   = "" # set to "sha256:..." from CI after first main push to pin
 container_name = "devops-challenge-prod"
 host_port      = 8081
+
+# Matches env/prod.env — passed into the container as HELLO_* env vars.
+hello_color = "green"
+hello_emoji = "🚀"

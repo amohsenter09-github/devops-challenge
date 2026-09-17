@@ -23,3 +23,13 @@ variable "host_port" {
   description = "Host port mapped to container port 8080."
   type        = number
 }
+
+variable "hello_color" {
+  description = "CSS color for Hello World (passed as HELLO_COLOR)."
+  type        = string
+}
+
+variable "hello_emoji" {
+  description = "Emoji shown next to Hello World (passed as HELLO_EMOJI)."
+  type        = string
+}

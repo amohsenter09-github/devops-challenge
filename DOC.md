@@ -68,10 +68,12 @@ If the package is private, log in first (`docker login ghcr.io`). Do not commit 
 
 Reusable module: `terraform/modules/container-app`.
 
-| Env file | Tag | Host port |
-|---|---|---|
-| `terraform/dev.tfvars` | `:dev` | 8080 |
-| `terraform/prod.tfvars` | `:prod` | 8081 |
+| Env file | Tag | Host port | Hello style |
+|---|---|---|---|
+| `terraform/dev.tfvars` (+ `env/dev.env`) | `:dev` | 8080 | blue + 🛠️ |
+| `terraform/prod.tfvars` (+ `env/prod.env`) | `:prod` | 8081 | green + 🚀 |
+
+`hello_color` / `hello_emoji` in tfvars become container env vars `HELLO_COLOR` / `HELLO_EMOJI`. The same keys live in `env/*.env` for `docker run --env-file`.
 
 Optional pin: set `image_digest = "sha256:..."` in the tfvars file (from CI output). Empty string means pull by tag.
 

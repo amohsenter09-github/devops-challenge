@@ -1,17 +1,33 @@
 name: CI
 
-# Dev publishes :dev. Main (when merged later) publishes :prod and :latest.
-# PRs only test/build; they never push registry tags.
+# =============================================================================
+# What this pipeline does (3 jobs in order)
+#
+#   1. Test  — run Maven unit tests
+#   2. Build — build Docker image, smoke-test GET /, save image as artifact
+#   3. Push  — upload image to GHCR (only on push to a branch, never on PRs)
+#
+# Which GHCR tags get published?
+#
+#   push to "dev"  →  :dev
+#   push to "main" →  :prod  and  :latest
+#   pull request   →  no push (test + build only)
+# =============================================================================
+
 on:
   push:
     branches: [dev, main]
   pull_request:
     branches: [dev, main]
 
+# Full image name, e.g. ghcr.io/amohsenter09-github/devops-challenge
 env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Test — fail fast if code is broken
+  # ---------------------------------------------------------------------------
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -24,20 +40,25 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Test
+      - name: Run Maven tests
         run: mvn -B test
 
+  # ---------------------------------------------------------------------------
+  # Job 2: Build — create the image and check that GET / returns Hello World
+  # ---------------------------------------------------------------------------
   build:
     name: Build
-    needs: test
+    needs: test # wait for Test to pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set image tags
+      # Pick tags for this run (used for docker build and later for push).
+      - name: Choose image tags
         id: tags
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # PR: temporary tag only; we never push it
             echo "tags=ci-pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             echo "tags=dev" >> "$GITHUB_OUTPUT"
@@ -47,31 +68,42 @@ jobs:
             echo "tags=ci" >> "$GITHUB_OUTPUT"
           fi
 
-      # Web app stays up; smoke-test GET / then remove the container.
-      - name: Build
+      # Build the image, start it, curl GET /, then remove the container.
+      - name: Build image and smoke-test
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
         run: |
+          # First tag is the "primary" one we run for the smoke test
           primary="$(echo "$TAGS" | awk '{print $1}')"
+
+          # docker build -t IMAGE:tag1 -t IMAGE:tag2 ...
           tag_args=""
           for t in $TAGS; do
             tag_args="$tag_args -t $IMAGE:$t"
           done
           # shellcheck disable=SC2086
           docker build $tag_args .
+
+          # Start the app in the background
           docker run -d --name ci-app -p 8080:8080 "$IMAGE:$primary"
+
+          # Wait up to ~30s for "Hello World" on GET /
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8080/ | grep -q "Hello World"; then
               docker rm -f ci-app
+              echo "Smoke test OK"
               exit 0
             fi
             sleep 1
           done
+
+          # Timed out — show logs and fail
           docker logs ci-app
           docker rm -f ci-app
           exit 1
 
-      - name: Save image
+      # Save image to a file so the Push job can load it (jobs run on different VMs).
+      - name: Save image to artifact
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
         run: |
@@ -87,6 +119,10 @@ jobs:
           name: image
           path: image.tar.gz
 
+  # ---------------------------------------------------------------------------
+  # Job 3: Push — publish to GHCR
+  #   Skipped on pull_request (if: only push to dev or main).
+  # ---------------------------------------------------------------------------
   push:
     name: Push
     needs: build
@@ -94,16 +130,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # needed to publish to GHCR
     steps:
+      # Get the image file from the Build job
       - uses: actions/download-artifact@v4
         with:
           name: image
 
-      - name: Load image
+      - name: Load image into Docker
         run: gunzip -c image.tar.gz | docker load
 
-      - name: Set image tags
+      # Same tag rules as Build (dev → :dev, main → :prod + :latest)
+      - name: Choose image tags
         id: tags
         run: |
           if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
@@ -112,7 +150,7 @@ jobs:
             echo "tags=prod latest" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Push
+      - name: Login and push to GHCR
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
         run: |
@@ -121,7 +159,8 @@ jobs:
             docker push "$IMAGE:$t"
           done
 
-      - name: Print digests
+      # Digests are useful later to pin Terraform (image_digest = "sha256:...")
+      - name: Print image digests
         env:
           TAGS: ${{ steps.tags.outputs.tags }}
         run: |

@@ -4,3 +4,7 @@ image_tag      = "dev"
 image_digest   = "" # empty = pull by tag; set "sha256:..." to pin
 container_name = "devops-challenge-dev"
 host_port      = 8080
+
+# Matches env/dev.env — passed into the container as HELLO_* env vars.
+hello_color = "blue"
+hello_emoji = "🛠️"
