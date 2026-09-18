@@ -1,4 +1,5 @@
-# Pull and run one GHCR image. Values come from dev.tfvars or prod.tfvars.
+# Pull and run one GHCR image.
+# Use workspaces + matching tfvars: select "dev" + -var-file=dev.tfvars, or "prod" + prod.tfvars.
 module "app" {
   source = "./modules/container-app"
 

@@ -77,10 +77,18 @@ Reusable module: `terraform/modules/container-app`.
 
 Optional pin: set `image_digest = "sha256:..."` in the tfvars file (from CI output). Empty string means pull by tag.
 
-From `terraform/`:
+Use **Terraform workspaces** so each env has its own state (independent of git branch):
 
 ```bash
+cd terraform
 terraform init
+
+# once
+terraform workspace new dev
+terraform workspace new prod
+
+# day to day
+terraform workspace select dev
 terraform apply -var-file=dev.tfvars
 ```
 
@@ -97,12 +105,13 @@ terraform apply -var-file=dev.tfvars -replace=module.app.docker_container.this
 Prod (only after `:prod` exists on GHCR — i.e. after a future merge to `main`):
 
 ```bash
+terraform workspace select prod
 terraform apply -var-file=prod.tfvars
 ```
 
-Use a **separate state** for prod if you run both envs at once (e.g. `-state=prod.tfstate`).
+Always pair workspace + matching tfvars (`dev`/`dev.tfvars`, `prod`/`prod.tfvars`).
 
-State files (`*.tfstate`) stay local and are gitignored.
+State lives under `terraform.tfstate` / `terraform.tfstate.d/` (gitignored). Switching git branches does not wipe it.
 
 ## Decisions
 
@@ -116,6 +125,7 @@ State files (`*.tfstate`) stay local and are gitignored.
 | Publish to GHCR | Same GitHub account, no extra registry account. |
 | Terraform pulls GHCR, does not rebuild | Local run uses the same image CI published. |
 | `container-app` module + `dev.tfvars` / `prod.tfvars` | Same pull/run module; env files set tag, port, optional digest. |
+| Terraform workspaces `dev` / `prod` | Separate state per env; same code, different tfvars. |
 | Web app on port 8080 | `GET /` returns Hello World so the app can be reached locally (not a public internet deploy). |
 
 Out of scope on purpose: Kubernetes, cloud VMs, secrets managers. The brief asked for a small, practical setup.

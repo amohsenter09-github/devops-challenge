@@ -93,6 +93,12 @@ Optional: set `image_digest = "sha256:..."` in the tfvars to pin (from CI Print 
 ```bash
 cd /Users/amrfathy/Downloads/devops-challenge/terraform
 terraform init
+
+# once: separate state for each env
+terraform workspace new dev
+terraform workspace new prod
+
+terraform workspace select dev
 terraform apply -var-file=dev.tfvars
 ```
 
@@ -115,8 +121,11 @@ terraform destroy -var-file=dev.tfvars
 Prod (only after `:prod` exists — after merge to `main`):
 
 ```bash
-terraform apply -var-file=prod.tfvars -state=prod.tfstate
+terraform workspace select prod
+terraform apply -var-file=prod.tfvars
 ```
+
+Git branch ≠ Terraform workspace: state stays on disk when you `git checkout`. Always match workspace + tfvars.
 ---
 
 # Real-life: promote this solution to AWS (best-practice scenarios)
